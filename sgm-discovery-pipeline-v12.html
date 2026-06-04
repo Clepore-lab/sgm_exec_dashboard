@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SGM Discovery Pipeline · FY26</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  /* Cohesive blue + muted neutrals palette — no red anywhere */
+  --ink:#0F1B2D;
+  --ink-2:#3A4A63;
+  --ink-3:#7A8699;
+  --ink-4:#B8C0CC;
+  --line:#E4E8EE;
+  --line-2:#EEF1F5;
+  --bg:#F5F7FA;
+  --bg-2:#FAFBFD;
+  --card:#FFFFFF;
+ 
+  --blue-50:#EEF4FB;
+  --blue-100:#DCE7F4;
+  --blue-200:#B8CDE8;
+  --blue-400:#5A86BD;
+  --blue-600:#1F4E87;
+  --blue-700:#163C6B;
+  --blue-800:#0F2C50;
+ 
+  /* Status colors — muted, no red */
+  --st-await:#7A8699;
+  --st-await-bg:#EEF1F5;
+  --st-prog:#1F4E87;
+  --st-prog-bg:#E7EFF9;
+  --st-done:#2D6A6A;
+  --st-done-bg:#E2EFEE;
+  --st-hold:#8A6F3E;
+  --st-hold-bg:#F4EDDF;
+ 
+  /* Business pill colors — distinct shades within blue family */
+  --biz-con:#1F4E87;
+  --biz-con-bg:#E7EFF9;
+  --biz-aa:#5A86BD;
+  --biz-aa-bg:#EEF4FB;
+  --biz-tax:#2D6A6A;
+  --biz-tax-bg:#E2EFEE;
+}
+ 
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-thumb{background:var(--ink-4);border-radius:3px;}
+::-webkit-scrollbar-track{background:transparent;}
+a{color:var(--blue-600);text-decoration:none;}
+a:hover{text-decoration:underline;}
+ 
+.hdr{background:var(--blue-800);padding:0 36px;display:flex;align-items:center;justify-content:space-between;height:38px;}
+.hdr .logo{font-size:14px;font-weight:700;color:#fff;letter-spacing:-.2px;}
+.hdr .logo b{color:var(--blue-200);}
+.hdr-meta{font-size:10px;color:rgba(255,255,255,.55);letter-spacing:.4px;text-transform:uppercase;}
+ 
+.titlebar{background:var(--card);padding:18px 36px 14px;border-bottom:1px solid var(--line);}
+.titlebar-row{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;}
+.titlebar-left{flex:1;min-width:0;}
+.title{font-family:'Source Serif 4',serif;font-size:24px;font-weight:600;color:var(--ink);line-height:1.15;letter-spacing:-.4px;margin-bottom:5px;}
+.title em{font-style:italic;color:var(--blue-600);font-weight:600;}
+.kicker{font-size:12px;color:var(--ink-2);line-height:1.5;max-width:780px;}
+.kicker b{color:var(--ink);font-weight:600;}
+ 
+.view-switch{display:flex;gap:2px;background:var(--bg);padding:3px;border-radius:7px;border:1px solid var(--line);align-self:flex-end;}
+.vs-btn{padding:6px 14px;font-size:11.5px;font-weight:600;color:var(--ink-3);background:transparent;border:none;border-radius:5px;cursor:pointer;font-family:inherit;letter-spacing:.1px;transition:all .12s;display:flex;align-items:center;gap:6px;}
+.vs-btn:hover{color:var(--ink);}
+.vs-btn.on{background:var(--card);color:var(--blue-700);box-shadow:0 1px 2px rgba(15,27,45,.08);}
+.vs-btn .draft-pill{font-size:8px;font-weight:700;background:var(--st-hold-bg);color:var(--st-hold);padding:1px 5px;border-radius:3px;letter-spacing:.5px;}
+ 
+.main{padding:18px 36px 40px;}
+ 
+.statusbar{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:16px;}
+.counts{display:grid;grid-template-columns:repeat(4,1fr);position:relative;}
+.count-cell{padding:14px 18px;border-right:1px solid var(--line);cursor:pointer;transition:background .12s;position:relative;}
+.count-cell:last-child{border-right:none;}
+.count-cell:hover{background:var(--bg-2);}
+.count-cell.active{background:var(--blue-50);}
+.count-cell.active::before{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--blue-600);z-index:2;}
+/* Flow arrows between the first 3 cells (forward pipeline: await → prog → done). 
+   On Hold sits outside the flow, separated by a divider. */
+.count-cell:nth-child(1),
+.count-cell:nth-child(2){padding-right:28px;}
+.count-cell:nth-child(2),
+.count-cell:nth-child(3){padding-left:28px;}
+.count-cell:nth-child(3){border-right:1px solid var(--line);}
+/* Visually de-emphasize the on-hold cell to signal it's not part of the flow */
+.count-cell:nth-child(4){background:var(--bg-2);}
+.count-cell:nth-child(4):hover{background:#F0F3F7;}
+.count-cell:nth-child(4).active{background:var(--blue-50);}
+ 
+.flow-arrow{
+  position:absolute;
+  top:50%;
+  transform:translateY(-50%);
+  z-index:5;
+  width:26px;height:26px;
+  border-radius:50%;
+  background:var(--card);
+  border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+  box-shadow:0 1px 2px rgba(15,27,45,.05);
+}
+.flow-arrow svg{display:block;}
+.flow-arrow.fa-1{left:25%;margin-left:-13px;}
+.flow-arrow.fa-2{left:50%;margin-left:-13px;}
+ 
+.count-cell{display:flex;align-items:center;gap:12px;}
+.count-cell .ct-num{font-family:'Source Serif 4',serif;font-size:26px;font-weight:600;line-height:1;color:var(--ink);letter-spacing:-.5px;flex-shrink:0;}
+.count-cell .ct-lbl{font-size:10.5px;font-weight:600;color:var(--ink-2);text-transform:uppercase;letter-spacing:.5px;margin-top:0;display:flex;align-items:center;gap:6px;line-height:1.25;}
+.count-cell .ct-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.ct-dot.await{background:var(--st-await);}
+.ct-dot.prog{background:var(--st-prog);}
+.ct-dot.done{background:var(--st-done);}
+.ct-dot.hold{background:var(--st-hold);}
+ 
+.qtabs{display:flex;flex-wrap:wrap;gap:0;border-top:1px solid var(--line);background:var(--bg-2);padding:8px 12px;}
+.qtab{padding:5px 11px;font-size:11px;font-weight:500;color:var(--ink-2);background:transparent;border:none;border-radius:4px;cursor:pointer;font-family:inherit;transition:all .1s;display:inline-flex;align-items:center;gap:6px;}
+.qtab:hover{background:var(--card);color:var(--ink);}
+.qtab.on{background:var(--blue-600);color:#fff;}
+.qtab.on .qt-status{color:rgba(255,255,255,.7);}
+.qt-status{font-size:9px;color:var(--ink-4);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+ 
+.domain-list{display:flex;flex-direction:column;gap:6px;}
+ 
+.domain{background:var(--card);border:1px solid var(--line);border-radius:8px;overflow:hidden;transition:border-color .12s,box-shadow .12s;}
+.domain:hover{border-color:var(--blue-200);}
+.domain.open{box-shadow:0 4px 16px rgba(15,27,45,.06);border-color:var(--blue-200);}
+ 
+.domain-row{display:grid;grid-template-columns:200px 110px 1fr 26px;gap:14px;padding:11px 16px;cursor:pointer;align-items:center;}
+.domain-row:hover{background:var(--bg-2);}
+.dr-name{font-size:14px;font-weight:600;color:var(--ink);line-height:1.25;letter-spacing:-.1px;display:flex;align-items:center;gap:8px;}
+.dr-name .cmt-dot{width:6px;height:6px;border-radius:50%;background:var(--st-hold);flex-shrink:0;display:none;}
+.dr-name .cmt-dot.has{display:inline-block;}
+.dr-status{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.1px;width:fit-content;}
+.dr-status .d{width:6px;height:6px;border-radius:50%;}
+.st-await{background:var(--st-await-bg);color:var(--st-await);}.st-await .d{background:var(--st-await);}
+.st-prog{background:var(--st-prog-bg);color:var(--st-prog);}.st-prog .d{background:var(--st-prog);}
+.st-done{background:var(--st-done-bg);color:var(--st-done);}.st-done .d{background:var(--st-done);}
+.st-hold{background:var(--st-hold-bg);color:var(--st-hold);}.st-hold .d{background:var(--st-hold);}
+ 
+.dr-summary{font-size:11.5px;color:var(--ink-2);line-height:1.45;}
+.dr-summary b{color:var(--ink);font-weight:600;}
+ 
+.dr-biz{display:flex;flex-wrap:wrap;gap:3px;justify-content:flex-end;}
+.biz-pill{font-size:9px;font-weight:600;padding:2px 7px;border-radius:3px;letter-spacing:.2px;}
+.biz-con{background:var(--biz-con-bg);color:var(--biz-con);}
+.biz-aa{background:var(--biz-aa-bg);color:var(--biz-aa);}
+.biz-tax{background:var(--biz-tax-bg);color:var(--biz-tax);}
+ 
+.dr-chev{color:var(--ink-3);font-size:14px;transition:transform .2s;justify-self:center;}
+.domain.open .dr-chev{transform:rotate(180deg);color:var(--blue-600);}
+ 
+.panel{display:none;border-top:1px solid var(--line);background:linear-gradient(180deg,var(--bg-2) 0%,var(--card) 100%);}
+.domain.open .panel{display:block;animation:fadeIn .2s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-3px);}to{opacity:1;transform:translateY(0);}}
+ 
+.panel-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;position:relative;}
+.section{padding:14px 16px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);position:relative;}
+.section:nth-child(3){border-right:none;}
+/* Add right padding on sections 1 & 2 so the chevron arrow sitting on the divider doesn't overlap content */
+.section:nth-child(1),
+.section:nth-child(2){padding-right:24px;}
+.section:nth-child(2),
+.section:nth-child(3){padding-left:24px;}
+/* Feedback section: full-width strip across the bottom */
+.section.section-feedback{grid-column:1 / -1;border-right:none;border-bottom:none;padding:12px 16px;background:var(--bg-2);}
+.section.section-feedback .sec-hdr{margin-bottom:8px;}
+ 
+/* Sequential flow chevrons between sections 1 → 2 → 3 (top row only) */
+.section-arrow{
+  position:absolute;
+  top:21px;
+  z-index:5;
+  width:24px;height:24px;
+  border-radius:50%;
+  background:var(--card);
+  border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+  box-shadow:0 1px 2px rgba(15,27,45,.05);
+}
+.section-arrow.sa-1{left:33.333%;margin-left:-12px;}
+.section-arrow.sa-2{left:66.666%;margin-left:-12px;}
+ 
+.sec-hdr{display:flex;align-items:center;gap:7px;margin-bottom:9px;}
+.sec-num{width:18px;height:18px;border-radius:4px;background:var(--blue-600);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;font-family:'Source Serif 4',serif;flex-shrink:0;}
+.sec-title{font-size:11px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.7px;}
+.sec-subtitle{font-size:9.5px;color:var(--ink-3);margin-left:auto;font-style:italic;}
+ 
+/* Tighter inner spacing for the 3-up layout */
+.insight-takeaway{background:var(--blue-50);border-left:3px solid var(--blue-600);padding:9px 11px;border-radius:0 5px 5px 0;font-size:11.5px;color:var(--ink);line-height:1.5;margin-bottom:9px;}
+.insight-takeaway b{color:var(--blue-700);}
+.insight-bullets{display:flex;flex-direction:column;gap:6px;font-size:11px;}
+.insight-bullet{display:flex;gap:7px;line-height:1.5;color:var(--ink);}
+.insight-bullet .ib-mark{color:var(--blue-400);font-weight:700;flex-shrink:0;line-height:1.5;}
+.insight-bullet b{color:var(--blue-700);font-weight:600;}
+.insight-grid{display:grid;grid-template-columns:78px 1fr;gap:5px 10px;font-size:11px;}
+.insight-grid dt{color:var(--ink-3);font-weight:600;text-transform:uppercase;font-size:9px;letter-spacing:.5px;padding-top:2px;}
+.insight-grid dd{color:var(--ink);line-height:1.45;}
+.insight-grid dd b{color:var(--blue-700);font-weight:600;}
+ 
+.action-list{display:flex;flex-direction:column;gap:6px;font-size:11px;}
+.action-intro{background:var(--blue-50);border-left:3px solid var(--blue-600);padding:9px 11px;border-radius:0 5px 5px 0;font-size:11.5px;color:var(--ink);line-height:1.5;margin-bottom:10px;}
+.action-intro b{color:var(--blue-700);font-weight:600;}
+.action-item{display:flex;gap:7px;line-height:1.45;color:var(--ink);}
+.action-item .ai-marker{color:var(--blue-400);font-weight:700;flex-shrink:0;line-height:1.45;}
+.action-impl{margin-top:7px;padding-top:7px;border-top:1px dashed var(--line);font-size:11px;color:var(--ink-2);line-height:1.5;font-style:italic;}
+.action-impl b{color:var(--ink);font-style:normal;font-weight:600;}
+.action-poc{margin-top:9px;padding-top:8px;border-top:1px dashed var(--line);font-size:11px;color:var(--ink-2);line-height:1.5;}
+.action-poc b{color:var(--ink);font-weight:700;}
+ 
+.materials{margin-top:9px;}
+.materials-lbl{font-size:9px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+.material-link{display:flex;align-items:center;gap:6px;padding:4px 0;font-size:10.5px;color:var(--blue-600);border-bottom:1px dotted var(--line-2);}
+.material-link:last-child{border-bottom:none;}
+.material-link .ml-icon{font-size:10px;color:var(--ink-3);flex-shrink:0;}
+.material-link.req-access{color:var(--ink-3);font-style:italic;}
+.material-link.req-access::after{content:'request access';font-size:8.5px;background:var(--bg);color:var(--ink-3);padding:1px 5px;border-radius:3px;margin-left:auto;border:1px solid var(--line);font-style:normal;letter-spacing:.2px;}
+ 
+.nextstep-list{display:flex;flex-direction:column;gap:6px;font-size:11px;}
+.nextstep-item{display:flex;gap:7px;align-items:flex-start;line-height:1.45;}
+.ns-bullet{color:var(--blue-600);font-weight:700;flex-shrink:0;font-size:10px;line-height:1.5;}
+.ns-bullet.done{color:#2D6A6A;}
+.ns-text{color:var(--ink);flex:1;}
+.ns-meta{font-size:9.5px;color:var(--ink-3);margin-top:1px;}
+.opp-summary{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--ink-2);line-height:1.5;margin-top:9px;}
+.opp-summary b{color:var(--ink);font-weight:600;}
+ 
+/* Feedback section: tighter horizontal layout since it's a full-width strip */
+.fb-prompt{font-size:11px;color:var(--ink-2);line-height:1.5;margin-bottom:8px;font-style:italic;}
+.fb-input-row{display:flex;gap:6px;margin-bottom:8px;}
+.fb-name{width:140px;padding:6px 9px;border:1px solid var(--line);border-radius:5px;font-family:inherit;font-size:11px;color:var(--ink);background:var(--card);}
+.fb-name:focus,.fb-text:focus{outline:none;border-color:var(--blue-400);box-shadow:0 0 0 2px rgba(90,134,189,.15);}
+.fb-text{flex:1;padding:6px 9px;border:1px solid var(--line);border-radius:5px;font-family:inherit;font-size:11px;color:var(--ink);background:var(--card);resize:vertical;min-height:32px;line-height:1.45;}
+.fb-post{padding:6px 16px;font-size:11px;font-weight:600;background:var(--blue-600);color:#fff;border:none;border-radius:5px;cursor:pointer;font-family:inherit;align-self:flex-end;}
+.fb-post:hover{background:var(--blue-700);}
+.fb-thread{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px;max-height:200px;overflow-y:auto;}
+.fb-card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:8px 11px;display:flex;gap:8px;}
+.fb-avatar{width:24px;height:24px;border-radius:50%;background:var(--blue-600);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;}
+.fb-body{flex:1;min-width:0;}
+.fb-meta{display:flex;gap:6px;align-items:baseline;margin-bottom:2px;}
+.fb-author{font-size:11px;font-weight:600;color:var(--ink);}
+.fb-time{font-size:9px;color:var(--ink-3);}
+.fb-del{font-size:9px;color:var(--ink-4);margin-left:auto;cursor:pointer;padding:1px 5px;border-radius:3px;}
+.fb-del:hover{background:var(--bg);color:var(--ink-2);}
+.fb-text-body{font-size:11px;color:var(--ink-2);line-height:1.45;white-space:pre-wrap;}
+.fb-empty{font-size:11px;color:var(--ink-4);font-style:italic;padding:4px 0;}
+ 
+.group-hdr{display:flex;align-items:center;gap:9px;margin:14px 0 6px;padding:0 2px;}
+.group-hdr:first-child{margin-top:0;}
+.gh-dot{width:6px;height:6px;border-radius:50%;}
+.gh-label{font-size:10px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.7px;}
+.gh-count{font-size:10px;color:var(--ink-4);font-weight:500;}
+.gh-line{flex:1;height:1px;background:var(--line);}
+
+.col-hdr{display:grid;grid-template-columns:200px 110px 1fr 26px;gap:14px;padding:4px 16px 6px;font-size:9px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px;}
+.col-hdr > div{line-height:1;}
+ 
+.draft-banner{background:var(--card);border:1px dashed var(--blue-200);border-radius:10px;padding:32px;text-align:center;color:var(--ink-2);}
+.draft-banner-title{font-family:'Source Serif 4',serif;font-size:18px;color:var(--ink);margin-bottom:8px;font-weight:600;}
+.draft-banner-sub{font-size:12px;color:var(--ink-3);max-width:480px;margin:0 auto;line-height:1.6;}
+.draft-pill-lg{display:inline-block;font-size:10px;font-weight:700;background:var(--st-hold-bg);color:var(--st-hold);padding:3px 8px;border-radius:4px;letter-spacing:.6px;margin-bottom:14px;}
+ 
+.footer{text-align:center;padding:18px 36px 24px;font-size:9.5px;color:var(--ink-4);letter-spacing:.3px;}
+ 
+@media(max-width:1180px){
+  .panel-grid{grid-template-columns:1fr;}
+  .section{border-right:none!important;}
+  .section.section-feedback{grid-column:auto;}
+  .section:nth-child(1),
+  .section:nth-child(2),
+  .section:nth-child(3){padding-left:16px;padding-right:16px;}
+  .section-arrow{display:none;}
+}
+@media(max-width:980px){
+  .domain-row{grid-template-columns:1fr;gap:6px;padding:12px 14px;}
+  .dr-chev{display:none;}
+  .col-hdr{display:none;}
+  .counts{grid-template-columns:repeat(2,1fr);}
+  .count-cell:nth-child(2){border-right:none;}
+  .count-cell:nth-child(-n+2){border-bottom:1px solid var(--line);}
+  .flow-arrow{display:none;}
+  .count-cell:nth-child(1),
+  .count-cell:nth-child(2),
+  .count-cell:nth-child(3){padding-left:18px;padding-right:18px;}
+}
+</style>
+</head>
+<body>
+ 
+<div class="hdr">
+  <div class="logo">Deloitte<b>.</b></div>
+  <div class="hdr-meta">Last updated: May 8, 2026 · FY26 · Internal</div>
+</div>
+ 
+<div class="titlebar">
+  <div class="titlebar-row">
+    <div class="titlebar-left">
+      <div class="title">SGM Discovery <em>Pipeline</em></div>
+      <div class="kicker">Scanning emerging markets to identify, validate, and graduate the next <b>Deloitte growth engines</b>. Each domain below shows where it stands today &mdash; what we&rsquo;ve learned, what it means, and where it goes next.</div>
+    </div>
+    <div class="view-switch">
+      <button class="vs-btn on" id="vs-disc" onclick="setView('disc')">Discovery</button>
+      <button class="vs-btn" id="vs-shape" onclick="setView('shape')">Shaping <span class="draft-pill">DRAFT</span></button>
+    </div>
+  </div>
+</div>
+ 
+<div class="main">
+  <div id="disc-view">
+    <div class="statusbar">
+      <div class="counts" id="counts"></div>
+      <div class="qtabs" id="qtabs"></div>
+    </div>
+    <div class="domain-list" id="domain-list"></div>
+  </div>
+ 
+  <div id="shape-view" style="display:none;">
+    <div class="draft-banner">
+      <div class="draft-pill-lg">DRAFT &mdash; NOT YET PUBLISHED</div>
+      <div class="draft-banner-title">Shaping view</div>
+      <div class="draft-banner-sub">This view will track domains that have graduated from Discovery and are actively being built, partnered on, or brought to market. Layout is being refined &mdash; check back soon.</div>
+    </div>
+  </div>
+</div>
+ 
+<div class="footer">SGM Discovery Pipeline &middot; Deloitte US Innovation &middot; FY26 &middot; Internal</div>
+ 
+<script>
+const DOMAINS = [
+  {
+    id:"quantum", name:"Quantum", status:"done", biz:["Consulting","A&A"],
+    summary:"<b>Stand up Quantum as an Incubating SGM (6&ndash;12 months)</b> to activate <b>five cross-MDM plays</b> across Consulting, A&A, Tax, and M&A &mdash; addressing <b>$6.0B of 5-yr cumulative Deloitte US TAM</b>.",
+    insights:{
+      takeaway:"The NExT team conducted pointed research to <b>equip firm leaders with the market positioning, competitive view, and demand signals needed to prioritize Quantum investment.</b> Key findings:",
+      bullets:[
+        "Sized the global quantum market and Deloitte&rsquo;s US opportunity across both sub-markets: <b>Cyber readiness $2.23B (2025) &rarr; $11.03B by 2030</b> (37.5% CAGR); <b>Computing $1.13B (2025) &rarr; $4.81B by 2030</b> (33.6% CAGR); <b>Deloitte US addressable (2025): $403M</b>; <b>cumulative 5-year: $6.0B</b>.",
+        "Analyzed competitor investments and activities, identifying primary competitors as <b>Accenture, BCG, Capgemini, and IBM Consulting</b>.",
+        "Found that <b>70% of enterprises are assessing or deploying quantum security measures, but only 15% are quantum-safe</b>.",
+        "Identified <b>35+ partnership opportunities</b> across hardware, software, security, and sensing &mdash; including <b>17 existing Deloitte relationships</b> (SandboxAQ, Palo Alto, IBM, IonQ, Google, ServiceNow, and others).",
+        "Mapped key market drivers accelerating client urgency: cryptographic risk, regulatory pressure (White House, NIST, NSA mandates), sustained VC investment (<b>$3.77B for computing alone</b> as of Fall 2025), advancing technical maturity, and rising enterprise adoption readiness."
+      ],
+      materials:[
+        {label:"SGM Quantum Workshop Pre-Read Deck", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/NExTTeam711/_layouts/15/Doc.aspx?sourcedoc=%7B5091DF0C-663C-4B89-A69E-02157C597915%7D&file=SGM%20Discovery%20-%20Quantum%20-%20Pre%20Read%20Materials.pptx&action=edit&mobileredirect=true", access:"request"},
+        {label:"NExT SGM Quantum Discovery &mdash; Workshop Readout.pptx", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/StrategicGrowthMarkets-06.SensingandDiscovery/Shared%20Documents/02%20-%20Quantum/NExT%20SGM%20Quantum%20Discovery%20-%20Workshop%20Readout.pptx?d=w6bce0065d57943849788edc40b6c068e&csf=1&web=1&e=cf7qG1", access:"request"}
+      ]
+    },
+    actions:{
+      intro:"We brought together <b>30 leaders</b> from Quantum Computing and Cyber Readiness, A&A, Tax, M&A, GPS, IDT, NExT, US Innovation, and SGMs to identify the largest cross-MDM market opportunities and disruptions. <b>Five bold cross-MDM plays emerged &mdash; each designed to convert near-term advisory demand into durable Deloitte revenue across Consulting, A&A, Tax, and M&A:</b>",
+      bullets:[
+        "<b>Elevate Brand &amp; Market Positioning</b> &mdash; Define the category before the &ldquo;ChatGPT moment&rdquo; for quantum hits. Unified analyst engagement, industry forum presence, and PPMD/SM enablement across Consulting eminence, A&A audit committee authority, and Tax incentive POV.",
+        "<b>Get on the Board &amp; C-Suite Agenda</b> &mdash; Move quantum out of the CISO/CTO seat and into CEO, CFO, and audit committee conversations. Consulting leads strategy; A&A surfaces cryptographic risk where it&rsquo;s already landing; Tax frames capital allocation and incentives.",
+        "<b>Drive Quantum Talent Transformation</b> &mdash; Get ahead of the talent wall before clients hit it (AI cycle as precedent). Consulting human capital builds capability and org models; Tax structures entities and compensation across jurisdictions; A&A assesses control and reporting implications.",
+        "<b>Explore Equity &amp; Partnership Plays</b> &mdash; Use D71 and co-ventures to take selective equity and alliance positions in hyperscalers and niche quantum vendors. Consulting identifies targets; M&A structures deals; Tax optimizes holding structures.",
+        "<b>Develop Products &amp; Assets</b> &mdash; Scale Quantum Computing&rsquo;s quantum-inspired ML algorithms into repeatable assessments, migration frameworks, and optimization engines. Consulting builds and delivers; A&A embeds assurance into the products; Tax advises on capitalization and monetization."
+      ],
+      implications:"<b>For Deloitte:</b> Five cross-MDM plays span Consulting, A&A, Tax, and M&A &mdash; with cyber readiness advisory and academic/vendor partnerships as the immediate revenue and eminence lanes. Both advanced to Shaping.",
+      poc:"Scott Buchholz",
+      pocEmail:"sbuchholz@deloitte.com"
+    },
+    nextSteps:{
+      items:[
+        {text:"Stand up Quantum as an Incubating SGM (6&ndash;12 months). Convene Innovation, NVTI, Consulting, Tax, and A&A to validate cross-MDM opportunities, define ownership, and shape brand and capabilities.", meta:"Complete", status:"done"},
+        {text:"Provide quantum teams short-term funding to maintain the scale of their current efforts.", meta:"Complete", status:"done"}
+      ],
+      opportunity:"Cyber readiness advisory is the near-term revenue lane. Academic partnerships set up the longer-horizon eminence play."
+    }
+  },
+  {
+    id:"leadership", name:"Leadership", status:"done", biz:["Consulting","A&A","Tax"],
+    summary:"<b>Launch an 8-week sprint to validate the HumanOS market thesis</b> and develop prioritized leadership products across Consulting, A&A, and Tax &mdash; addressing a <b>$2.73&ndash;9B Deloitte DAM</b> with <b>six bold opportunity areas</b> identified.",
+    insights:{
+      takeaway:"The NExT team conducted pointed research to <b>size the leadership market, surface the disruptions reshaping it, and determine whether Deloitte&rsquo;s existing leadership assets warrant a productized cross-MDM offering.</b> Key findings:",
+      bullets:[
+        "Sized the global Leadership market: <b>$91B globally</b> with <b>10.6% CAGR</b>. Deloitte DAM estimated <b>$2.73B&ndash;$9B</b> (9.9% Deloitte market capture, 3&ndash;6% market share of leading competitors). Growth driven by capability stress, AI/digital skill gaps, executive turnover, and mid-manager burnout &mdash; not discretionary development.",
+        "Mapped capital flows reshaping the leadership market: <b>$353B fragmented L&D market</b> targeted by PE roll-ups; <b>$339B deal value in 2025</b> with <b>50%+ of VC deals tied to AI/ML</b>. Capital concentrating around AI-driven coaching (BetterUp $4.7B, CoachHub), talent intelligence (Eightfold $2.1B, Glean $4.6B), and HR platforms (Personio $8.3B, Dayforce $11.2B take-private). Market consolidating from fragmented services into AI-driven asset classes.",
+        "Inventoried Deloitte&rsquo;s existing leadership footprint: <b>Deloitte University &amp; Signature Spaces</b>, <b>US Growth &amp; Development</b>, <b>#1 Human Capital practice</b>, Deloitte Academies, Executive Accelerators, PPMD Excellence, Business Chemistry&trade;, Team Alchemy&trade;, Four Factors of Trust (TrustID&reg;), the Deloitte Leadership Model, Momentum, and Greenhouses &mdash; a deep asset base ready for productization.",
+        "Identified <b>12 market disruptions</b> reshaping leadership over the next 3&ndash;5 years &mdash; including <b>&ldquo;Your New Boss is an Algorithm&rdquo;</b> (AI-powered management), <b>&ldquo;A Broken Leadership Ladder&rdquo;</b> (entry-level jobs down 32% since ChatGPT; PwC cutting graduate intake by ~one-third by 2028), <b>&ldquo;The Empathy Advantage&rdquo;</b> (72% of employees say their employer is empathetic, but 42% of HR pros say their leadership doesn&rsquo;t support empathy), and <b>&ldquo;The Democratization of Expertise&rdquo;</b> (GenAI automating up to 70% of knowledge work).",
+        "Confirmed <b>cross-MDM applicability</b>: <b>Consulting</b> (leadership operating model redesign and capability/pipeline strategy as AI reshapes the workforce), <b>A&A</b> (AI governance assurance for talent and performance systems; leadership risk assessment for boards and audit committees), <b>Tax</b> (workforce transition tax strategy for AI-driven restructuring; incentive and equity structuring for leadership programs)."
+      ],
+      materials:[
+        {label:"SGM Discovery &mdash; Leadership Workshop Pre-Read Materials", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/StrategicGrowthMarkets-06.SensingandDiscovery/Shared%20Documents/03%20-%20Leadership/Working%20Documents/SGM%20Discovery%20-%20Leadership%20Workshop%20Pre-Read%20Materials.pptx?d=waf3855f0375b4825af4d3ec34b37b472&csf=1&web=1&e=fQj85c", access:"request"},
+        {label:"Leadership Discovery Workshop Read-Out Deck", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/StrategicGrowthMarkets-06.SensingandDiscovery/Shared%20Documents/03%20-%20Leadership/Working%20Documents/Leadership%20Read%20Out%20Deck%20.pptx?d=wbe700837b67448b8afa48d9be95105bd&csf=1&web=1&e=NqmRYD", access:"request"}
+      ]
+    },
+    actions:{
+      intro:"We brought together <b>50+ leaders</b> from Human Capital, Executive Accelerators, Deloitte University, PPMD Excellence, Growth &amp; Development, Tax, A&A, M&A, AI&E, IDT, NExT, US Innovation, Marketing, and SGMs to align on the future of leadership. <b>Six bold opportunity areas emerged &mdash; each designed to convert Deloitte&rsquo;s existing leadership assets into a productized cross-MDM offering:</b>",
+      bullets:[
+        "<b>Own the HumanOS Category</b> &mdash; Define how organizations orchestrate human-machine collaboration before any competitor does. Positioning early in the growth curve shapes industry standards and elevates brand authority. Consulting leads category definition; A&A surfaces governance frameworks; Tax frames incentive structures.",
+        "<b>Build the Assessment Capability</b> &mdash; Define what good leadership looks like and connect development investment to financial outcomes. A rigorous assessment framework is the strategic foundation of a credible leadership offering &mdash; and a meaningful pivot into new territory for Deloitte. Consulting leads build; A&A embeds in board and audit committee POVs.",
+        "<b>Position Deloitte as a Certification Brand</b> &mdash; Leverage Deloitte University to rival premier academic institutions. Build credentialing programs that monetize existing IP and scale via virtual delivery. DU leads the platform; Consulting builds curriculum; Marketing positions the brand.",
+        "<b>Redefine the Leadership Journey</b> &mdash; Expand the aperture on leadership development. The traditional pipeline is broken (entry-level jobs down 32% since ChatGPT); the leadership journey now starts far earlier and extends well beyond the C-suite. Human Capital leads design; Executive Accelerators delivers.",
+        "<b>Empathic Agent Advantage</b> &mdash; Help clients integrate AI agents as coaches, develop contextual empathy within those agents, and preserve human moments where compassion remains the scarcest leadership currency. AI&E builds the capability; Consulting commercializes it.",
+        "<b>Agents as Coworkers and Customers</b> &mdash; Develop strategic plays to capture AI-agent attention as agentic work and agentic commerce accelerate. Winning the algorithm becomes winning the business. AI&E leads; Consulting and Marketing develop the client-facing offering."
+      ],
+      implications:"<b>For Deloitte:</b> Six opportunity areas span Consulting, A&A, and Tax &mdash; with <b>HumanOS positioning</b> and the <b>productization of Deloitte University assets</b> as the immediate value lanes. No firm currently owns the human-machine leadership category; first-mover advantage is available.",
+      poc:"Jason Geller",
+      pocEmail:"jgeller@deloitte.com"
+    },
+    nextSteps:{
+      items:[
+        {text:"Launch 8-week sprint with named leader and dedicated cohort (1&ndash;2 nominees per business area) to refine the market thesis and test the HumanOS concept", meta:"Recommended"},
+        {text:"Develop prioritized set of scalable product solutions tied to the six opportunity areas", meta:"During sprint"},
+        {text:"Asset commercialization: clarify product vs. service across Human Capital, Momentum, DU, Business Chemistry, and the human skills portfolio", meta:"During sprint"},
+        {text:"Bring forward post-sprint recommendation: incubate as new SGM vs. embed within Human Capital and DU", meta:"Post-sprint"}
+      ],
+      opportunity:"$2.73&ndash;9B Deloitte DAM in a $91B global market growing at 10.6% CAGR. No firm currently owns the human-machine leadership category &mdash; Deloitte has the brand, assets, and reach to define it first."
+    }
+  },
+  {
+    id:"agentic", name:"Agentic Commerce", status:"done", biz:["Consulting","A&A","Tax"],
+    summary:"<b>Incubated into the Applied AI SGM as a core pillar of the AI agenda</b> &mdash; activating <b>four prioritized opportunity areas</b> across Consulting, A&A, and Tax to address <b>$4B+ in projected 2030 TAM</b>.",
+    insights:{
+      takeaway:"The NExT team conducted pointed research to <b>size the agentic commerce opportunity, assess Deloitte&rsquo;s competitive positioning, and determine whether agentic commerce warrants a standalone SGM or should incubate within the broader AI agenda.</b> Key findings:",
+      bullets:[
+        "Sized four prioritized opportunity areas: <b>Advisory Materials $198M (2025) &rarr; $1.01B (2030)</b>; <b>Customer Experience &amp; Ecosystem $279M &rarr; $1.21B</b>; <b>Agent-Ready Data &amp; Knowledge Graph $206M &rarr; $711M</b>; <b>Interoperability Validation $376M &rarr; $1.43B</b>. <b>25% of global e-commerce sales</b> projected to be agent-enabled by 2030.",
+        "Mapped the consumer and enterprise shift: <b>67% of shoppers</b> interested in using AI assistants; <b>55% start product research via LLM platforms</b>; <b>43% of retailers piloting autonomous AI</b> and 53% evaluating; <b>4,700% jump in traffic to US retail sites from GenAI sources</b> July 2024&ndash;25; <b>63% of enterprises</b> intending to leverage AI agents by 2026.",
+        "Identified key competitive movers: <b>ChatGPT, Amazon, Walmart, Perplexity, and Klarna</b> already investing at scale; OpenAI/Stripe enabling instant checkout in chats; <b>Mastercard Agent Pay, ACP/AP2, and A2A protocols</b> emerging as the standards layer; major tech, cloud, and payment players converging.",
+        "Inventoried Deloitte&rsquo;s existing assets and alliances: <b>Zora, Converge, Ascend, and HundredX</b> (consumer sentiment data for agent intelligence), existing agent demos and POCs, AEO/GEO strategy, and an active autonomous commerce client lab experience.",
+        "Confirmed <b>cross-MDM applicability across Advise / Implement / Operate</b>: <b>Consulting</b> (advisory, CX ecosystems, change management), <b>A&A</b> (GRC frameworks aligned to NIST AI RMF, ISO 42001, EU AI Act; assurance operationalization), <b>Tax</b> (cross-border tax, KYC/AML compliance, digital tax for commerce, payment-partnership considerations)."
+      ],
+      materials:[
+        {label:"Agentic Commerce Workshop Pre-Read", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/StrategicGrowthMarkets-06.SensingandDiscovery/Shared%20Documents/01%20-%20Agentic%20Commerce/Agentic%20Commerce%20Workshop_Preread.pptx?d=wa6067463168d4d8ebd8fda08f46e90f7&csf=1&web=1&e=wUOtT1", access:"request"},
+        {label:"Agentic / Autonomous Commerce 11/20 Workshop Recap", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/StrategicGrowthMarkets-06.SensingandDiscovery/Shared%20Documents/01%20-%20Agentic%20Commerce/Agentic_Autonomous%20Commerce%2011.20%20Workshop%20Recap.pptx?d=w1de8a70081c94c87a9e5c82cc73bda6f&csf=1&web=1&e=YPJdxU", access:"request"},
+        {label:"Agentic Commerce SGM Candidate Scorecard", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/StrategicGrowthMarkets-06.SensingandDiscovery/Shared%20Documents/01%20-%20Agentic%20Commerce/Agentic%20Commerce%20Scorecard.pptx?d=w81dbda1aa06348bba5b046f0d4e6774c&csf=1&web=1&e=teYxI7", access:"request"}
+      ]
+    },
+    actions:{
+      intro:"We brought together the agentic commerce working group &mdash; leaders from <b>Applied AI SGM, NExT, A&A, Tax, HundredX, and US Innovation</b> &mdash; to prioritize opportunities and determine the right home for agentic commerce. <b>Four opportunity areas were prioritized from participant votes &mdash; three to pursue now, one parked until standards mature:</b>",
+      bullets:[
+        "<b>Agentic Commerce Advisory Materials</b> &mdash; C-suite and board advisory tailored to personas (CIO, CFO, CMO), industry-specific playbooks covering value, risks, barriers, and implementation, plus &ldquo;show and tell&rdquo; agent builds for client boards. <b>TAM $198M (2025) &rarr; $1.01B (2030).</b> Consulting leads advisory; A&A surfaces governance frameworks; Tax frames cross-border and incentive structures.",
+        "<b>Agentic Customer Experience &amp; Ecosystem</b> &mdash; End-to-end agent-driven journeys across discovery, purchase, and service. Industry and domain agents (retail personal shopper, B2B replenishment, procure-to-pay, post-purchase service), payment concierge agents, and ACP/AP2 protocol implementations. <b>TAM $279M (2025) &rarr; $1.21B (2030).</b> Consulting leads design and orchestration; Tax embeds cross-border payment considerations.",
+        "<b>Agent-Ready Data &amp; Product Knowledge Graph</b> &mdash; Data product activation labs for design, governance, and use-case activation; data and catalog readiness for commerce agents (inventory, pricing, attribute exposure); autonomous product knowledge graphs. <b>TAM $206M (2025) &rarr; $711M (2030).</b> Consulting leads build; differentiated through <b>HundredX consumer sentiment integration</b>.",
+        "<b>Partner &amp; Marketplace Interoperability Validation</b> <em>[parked]</em> &mdash; Agent marketplace conformance (AP2/ACP/A2A protocol testing), partner API certification, commerce platform compatibility testing, and agent identity/trust certification. <b>TAM $376M (2025) &rarr; $1.43B (2030).</b> Not pursuing now &mdash; agent-to-agent interoperability protocols are emerging but fragmented and lack formal regulation. Revisit as standards mature."
+      ],
+      implications:"<b>For Deloitte:</b> Three active opportunity areas + one parked &mdash; <b>incubated within the Applied AI SGM</b> rather than spun up as a standalone domain. Working group chartered (1/14 cadence), B2B POV in motion, POC for agent orchestration discussed, and alliance/partnership exploration underway with NExT.",
+      poc:"Jim Rowan",
+      pocEmail:"jimrowan@deloitte.com"
+    },
+    nextSteps:{
+      items:[
+        {text:"Complete B2B POV with persona-specific considerations (CIO, CFO, CMO)", meta:"In progress"},
+        {text:"Enhance existing client lab experience to include autonomous commerce future state", meta:"In progress"},
+        {text:"Initiate POC demonstrating agent orchestration and integration for autonomous commerce", meta:"Scoping with Leor Bachar and Tim Davis"},
+        {text:"Explore alliance and partnership opportunities (Amazon, Google, Anthropic, Stripe, Palantir) coordinated by NExT", meta:"Active"},
+        {text:"Begin further analysis of prioritized opportunities by Now vs. Next, MDM, and B2B/B2C/B2B2C criteria", meta:"Pre-regroup interviews complete"}
+      ],
+      opportunity:"$4B+ in projected 2030 TAM across three active opportunity areas, anchored in <b>Applied AI SGM as a core pillar</b> &mdash; same revenue lane, lower SGM overhead, with HundredX, Zora, Converge, and Ascend as differentiating assets."
+    }
+  },
+  {
+    id:"creator", name:"Creator Economy", status:"prog", biz:["Consulting"],
+    summary:"The <b>$250B+ creator economy</b> is generating new cross-cutting advisory demand across Tax + Consulting that <b>warrants a dedicated SGM offering</b>.",
+    insights:{
+      takeaway:"The $250B+ creator economy is creating <b>new advisory demand</b> in tax, platform strategy, and brand partnerships as budgets shift from traditional media.",
+      definition:"Independent creators monetizing across platforms, plus brands and tax/regulatory advisory built around that economy.",
+      whyNow:"Creator platforms surpassing $250B annually (up 35% YoY); P&G/Unilever shifting 30%+ of media budgets to creators; IRS scrutiny of creator income and cross-border payments increasing.",
+      market:"$250B+ globally and growing 35% YoY &mdash; refinement of Deloitte-addressable slice underway.",
+      disruptors:"Media budget reallocation to creators; cross-border tax complexity; platform consolidation and creator-equity models.",
+      relevance:"Tax + Consulting practices both have natural entry points; brand partnership advisory is whitespace.",
+      materials:[
+        {label:"Creator Economy Discovery Assessment", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/StrategicGrowthMarkets-06.SensingandDiscovery/Shared%20Documents/05%20-%20Creator%20Economy/Working%20Documents/Creator%20Economy%20Discovery%20Assesment.pptx?d=w479315ab26764907bb1183d57765bfe5&csf=1&web=1&e=kb0Jlm", access:"request"}
+      ]
+    },
+    actions:{
+      bullets:[
+        "1-slider discovery assessment created and shared with Heather (3/26)",
+        "Formal discovery sprint initiated May 1, 2026",
+        "Market refinement and validation underway",
+        "Whitespace and positioning assessment to follow"
+      ]
+    },
+    nextSteps:{
+      items:[
+        {text:"Complete market sizing and validation", meta:"By Jun 15"},
+        {text:"Identify whitespace opportunities", meta:"By Jun 30"},
+        {text:"Assess Deloitte positioning and investible things", meta:"By Jul 15"}
+      ],
+      opportunity:"Sprint will surface whether creator-economy advisory is a standalone SGM or a cross-cutting capability across Tax and Consulting."
+    }
+  },
+  {
+    id:"purpose", name:"Purpose", status:"prog", biz:["Consulting","A&A","Tax"],
+    summary:"Purpose creates <b>real cross-MDM value through its intersections</b> with Deloitte&rsquo;s existing SGMs and capability lines &mdash; the opportunity is to <b>embed Purpose across the portfolio rather than stand it up as a new SGM</b>.",
+    insights:{
+      takeaway:"The NExT team conducted pointed research to <b>size the Purpose opportunity, inventory Deloitte&rsquo;s existing footprint, and determine whether Purpose is best activated as a standalone SGM or embedded across the existing portfolio.</b> Key findings:",
+      bullets:[
+        "Sized the addressable landscape: <b>$8&ndash;15B</b> estimated US nonprofit management/strategic consulting market; <b>$1.57T global impact investing market</b>; <b>~1.5M US nonprofits and foundations</b>, including <b>1,300 foundations</b> with $200M+ assets and <b>8,000 UHNIs</b> spending $3M+/year on philanthropy.",
+        "Inventoried Deloitte&rsquo;s existing Purpose footprint: <b>Monitor Institute</b> (nonprofit and philanthropy consulting), <b>Dot Good and Deloitte Digital</b> (tech implementation for nonprofits), the <b>Tax-Exempt Organizations practice</b>, Audit (nonprofit financial and compliance audits), and Atlantic-series thought leadership.",
+        "Mapped <b>12 client disruptions</b> reshaping purpose-driven organizations over the next 3&ndash;5 years &mdash; including the <b>Sovereign Funding Crisis</b> (1 in 3 US nonprofits hit by federal funding disruption in H1 2025), the <b>Tax-Exempt Tightrope</b> (political weaponization of 501(c)(3)), the <b>$84.4T Great Wealth Transfer</b> through 2045, and the <b>Cross-Sector Collision</b> ($35.5T ESG investing in 2025 &rarr; projected $191T by 2035).",
+        "Identified <b>8 existing SGM intersections</b> where Purpose creates unique market opportunities &mdash; Sports (Anthony Stephan), Trade &amp; Tariffs (David Yaros), Space (Brett Loubert), Sustainability + Infrastructure (Steve Goldbach), Applied AI (Kelly Marchese), MARS (Jim Rowan), Finance (Adam Reilly), and PE (Ed Hardy / Bryant Huber) &mdash; each with named leadership owners."
+      ],
+      materials:[
+        {label:"NExT SGM Discovery &mdash; Purpose Kickoff Deck", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/StrategicGrowthMarkets-06.SensingandDiscovery/Shared%20Documents/04%20-%20Purpose/Working%20Documents/NExT%20SGM%20Discovery%20-%20Purpose%20Kickoff%20Deck.pptx?d=w0cf00f3c8c854e3f892af9c9e6fc18ed&csf=1&web=1&e=81hs6i", access:"request"}
+      ]
+    },
+    actions:{
+      intro:"Building on the research finding that Purpose creates more value embedded than stood up as a new SGM, we identified the largest cross-MDM activation opportunities. <b>Five strategic plays emerged, each designed to activate Purpose across existing SGMs and capability lines rather than build a new one:</b>",
+      bullets:[
+        "<b>Embed Purpose across the 8 existing SGMs</b> &mdash; Activate Sports, Trade &amp; Tariffs, Space, Sustainability + Infrastructure, Applied AI, MARS, Finance, and PE as the primary go-to-market for purpose-driven work. Each SGM owns a defined Purpose intersection; Monitor Institute provides the strategy connective tissue.",
+        "<b>Unify the existing nonprofit and philanthropy footprint</b> &mdash; Connect Monitor Institute (strategy), Dot Good and Deloitte Digital (tech implementation), the Tax-Exempt Organizations practice, and Audit into one cross-firm offering for the 1.5M US nonprofits, 1,300 large foundations, and 8,000 UHNIs Deloitte already serves.",
+        "<b>Capture the sovereign-funding and tax-exempt crisis demand wave</b> &mdash; Help nonprofits rebuild operating models as government funding becomes unreliable (1 in 3 hit in H1 2025) and 501(c)(3) status becomes politically contested. Monitor leads strategy; Tax restructures funding models and protects exempt status; A&A surfaces compliance and audit risk.",
+        "<b>Position for the $84.4T Great Wealth Transfer</b> &mdash; Help foundations, UHNIs, and intermediaries capture and deploy generational capital (only $11.9T of the $84.4T is projected to flow to charities through 2045). PE and Family Office advisory lead; Tax structures vehicles; Monitor advises philanthropic strategy.",
+        "<b>Close the AI-for-Purpose transformation gap</b> &mdash; 92% of nonprofits use AI tools but only 7% report major mission impact. Move clients from dabbling to leading. Applied AI SGM and Deloitte Digital build the offering; Monitor frames strategy; A&A advises on AI governance for nonprofit boards."
+      ],
+      implications:"<b>For Deloitte:</b> Five embedding plays activate Purpose <b>without the cost of standing up a new SGM</b>. Monitor Institute is the strategy anchor; Tax, A&A, and Deloitte Digital extend the offering; the 8 existing SGM intersections are the primary go-to-market.",
+      poc:"Dana O'Donovan",
+      pocEmail:"daodonovan@deloitte.com"
+    },
+    nextSteps:{
+      items:[
+        {text:"Validate the 8 SGM intersections with named SGM owners and define ownership model for embedded Purpose work", meta:"In progress"},
+        {text:"Prioritize the 12 client disruptions for advisory offering development", meta:"To follow"},
+        {text:"Bring forward final recommendation: embed-only vs. lightweight coordination layer across SGMs", meta:"Post-discovery"}
+      ],
+      opportunity:"Five embedding plays unlock the $8&ndash;15B nonprofit consulting market and position Deloitte for the $84.4T wealth transfer &mdash; without the cost of a new SGM. <b>Value lives in the intersections, not a new category.</b>"
+    }
+  },
+  {
+    id:"synbio", name:"Synthetic Biology", status:"await", biz:["Consulting","A&A","Tax"],
+    summary:"Synthetic biology has hit a <b>synchronized regulatory-and-tech inflection point</b>. <b>SGM can own the industrial axis</b> (&ldquo;Bio-Based Industrial Systems&rdquo;) while LSHC retains therapeutics &mdash; a cross-firm frame consolidating <b>four ingredients no competitor has packaged</b>: thought leadership, a branded practice, federal/regulatory depth, and an AI hyperscaler alliance.",
+    insights:{
+      takeaway:"The NExT team conducted pointed research to <b>size the industrial-bio opportunity, surface the competitive whitespace, and identify a defensible cross-MDM scope that complements rather than competes with LSHC.</b> Key findings:",
+      bullets:[
+        "Sized the global synthetic biology market: <b>$22B (2025) &rarr; $130B by 2035</b> (18% CAGR). The <b>industrial axis</b> &mdash; biomanufacturing, chemicals, energy/SAF, ag, and defense-industrial bio &mdash; is the SGM-addressable slice; LSHC retains therapeutics and cell &amp; gene therapy.",
+        "Mapped the competitive whitespace: <b>no firm has consolidated all four ingredients</b> &mdash; thought leadership, a branded SynBio practice, federal/regulatory depth, and an AI hyperscaler alliance. <b>Deloitte has all four, but they are not yet packaged.</b>",
+        "Identified <b>four converging disruptions creating the first synchronized tech-and-policy catalyst</b> the field has seen: (1) AI-native biology &mdash; AlphaFold, ESM, RFdiffusion in production with design cycles collapsing 10&ndash;100&times;; (2) <b>BIOSECURE Act</b> forcing pharma decoupling from Chinese bio-suppliers (compliance surge 2025&ndash;27); (3) <b>$15B NSCEB federal push</b> across DARPA, BARDA, and DoD bio-manufacturing programs; (4) <b>$236B pharma patent cliff</b> through 2030 forcing R&amp;D re-platforming.",
+        "Inventoried Deloitte&rsquo;s existing SynBio assets: <b>Atlas AI &times; NVIDIA BioNeMo</b> (drug-discovery accelerator under Quartz AI), <b>Gryphon Scientific biosecurity partnership</b>, LSHC pharma manufacturing &amp; supply chain serving the <b>majority of top-20 pharma</b>, Federal Health AI Accelerator, and the Center for Health Solutions 2026 Life Sciences Outlook (280 C-suite survey).",
+        "Confirmed <b>five client and market segments primed for advisory demand</b>: Pharma/Biotech (BIOSECURE remediation, patent-cliff retooling), CDMO/Contract Manufacturing (reshoring capacity build), Defense/Federal (NSCEB, DARPA, BARDA), Energy/Chemicals/Ag (SAF, CBAM, CRISPR ag, precision fermentation), and PE/VC + Consumer (synbio diligence, bio-asset valuation where no market comps exist)."
+      ],
+      materials:[
+        {label:"Synthetic Biology Key Findings &mdash; Market Map &amp; Potential SGM Play", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/StrategicGrowthMarkets-06.SensingandDiscovery/Shared%20Documents/07%20-%20SynBio/SynBio%20Key%20Findings.pptx?d=w09f7bd7b3b3f4ed99c1160d0a2a9a30b&csf=1&web=1&e=WCvWS9", access:"request"}
+      ]
+    },
+    actions:{
+      intro:"Building on the synchronized inflection identified above, we are scoping a <b>&ldquo;Bio-Based Industrial Systems&rdquo; SGM</b> that owns the industrial axis while LSHC retains therapeutics &mdash; a cross-firm frame that consolidates the four ingredients no competitor has packaged. <b>Five strategic plays are emerging:</b>",
+      bullets:[
+        "<b>Package &ldquo;Bio-Based Industrial Systems&rdquo; as the SGM frame</b> &mdash; Carve the industrial axis (biomanufacturing, chemicals, energy/SAF, ag, defense-industrial bio) into the SGM; LSHC retains therapeutics and cell &amp; gene therapy. Mirrors how SGMs already carve across practices and minimizes LSHC friction.",
+        "<b>Consolidate the four ingredients no competitor has packaged</b> &mdash; Connect Atlas AI &times; NVIDIA BioNeMo (AI hyperscaler alliance), Gryphon Scientific (federal/regulatory depth), Center for Health Solutions (thought leadership), and LSHC manufacturing footprint (branded practice) into one unified industrial-bio offering.",
+        "<b>Capture the BIOSECURE and patent-cliff demand wave</b> &mdash; Help top-20 pharma decouple from Chinese suppliers, re-source CDMOs, and retool R&amp;D pipelines as $236B in exclusivity expires through 2030. Consulting leads supply chain re-sourcing; Tax frames R&amp;D credit optimization; A&A surfaces bio-asset valuation and impairment risk (no market comps exist).",
+        "<b>Lead the NSCEB / biodefense industrial-base build-out</b> &mdash; Position for the proposed $15B NSCEB federal push across DARPA, BARDA, and DoD bio-manufacturing programs. GPS leads federal engagement; Consulting builds sovereign capacity plans; A&A supports the compliance and audit surge through 2028.",
+        "<b>Drive the bio-industrial transition across energy, chemicals, and ag</b> &mdash; Precision fermentation scale-up, SAF/45Z credit capture, CBAM compliance, CRISPR agriculture commercialization, and bio-based materials. Tax leads credit structuring (SAF/45Z, R&amp;D); Consulting leads commercialization strategy; A&A supports techno-economic and life-cycle assurance."
+      ],
+      implications:"<b>For Deloitte:</b> Five SGM plays span Biomanufacturing, Defense, Energy, Chemicals, and Ag &mdash; with the unified industrial-bio frame and the BIOSECURE/patent-cliff demand wave as the immediate value lanes. <b>SGM owns the industrial axis; LSHC retains therapeutics and cell &amp; gene therapy.</b>"
+    },
+    nextSteps:{
+      items:[
+        {text:"Identify core team for 6-week discovery sprint", meta:"By May 30"},
+        {text:"Validate &ldquo;Bio-Based Industrial Systems&rdquo; frame with LSHC, GPS, Tax, and A&A leadership", meta:"During sprint"},
+        {text:"Begin 6-week discovery sprint", meta:"By Jun 15"},
+        {text:"Bring forward SGM structure and ownership recommendation", meta:"Post-sprint"}
+      ],
+      opportunity:"A &ldquo;Bio-Based Industrial Systems&rdquo; SGM consolidates the four ingredients no competitor has packaged &mdash; spanning Consulting, A&A, and Tax across a market growing from $22B to $130B by 2035."
+    }
+  },
+  {
+    id:"physical", name:"Physical Economy", status:"await", biz:["Consulting","Tax","A&A"],
+    summary:"Deloitte&rsquo;s Physical Economy presence is <b>strong but fragmented</b> &mdash; the opportunity may not be to build a new practice, but to invest in <b>coordination-based plays that connect what already exists</b> across Consulting, Tax, A&A, and M&A.",
+    insights:{
+      takeaway:"The NExT team conducted pointed research to <b>diagnose Deloitte&rsquo;s existing physical economy footprint, surface the competitive and capability gaps, and identify where coordination-based investments can convert what&rsquo;s already in flight into a unified market presence.</b> Key findings:",
+      bullets:[
+        "Sized the global physical economy and Deloitte&rsquo;s US opportunity: <b>$2.5T US manufacturing output</b>; <b>$38B &rarr; $98B global SCM software by 2030&ndash;35</b>; <b>$10T+ global logistics</b>; <b>$1.2T+ US infrastructure (IIJA)</b>; <b>$3T+ in reshoring investment announced since Jan 2025</b>. <b>Deloitte TAM: $5&ndash;10B+</b> across service lines &mdash; exceeding the SGM threshold by orders of magnitude.",
+        "Analyzed competitor investments and activities, identifying primary competitors as <b>McKinsey</b> (Supply Chain 4.0 + QuantumBlack), <b>Accenture</b> (autonomous/AI-driven SC via acquisition), <b>BCG</b> (geopolitical strategy + critical minerals franchise), <b>Kearney</b> (procurement &amp; reshoring analytics leader), and <b>Bain</b> (circular SC + industrial PE vertical).",
+        "Mapped Deloitte&rsquo;s existing 6-layer Physical Economy stack &mdash; <b>Materials, Transformation, Movement, Distribution, Consumption, and Intelligence (AI overlay)</b> &mdash; with strong coverage across <b>4 global Smart Factory hubs</b>, <b>17 years of CentralSight&trade;</b> (incl. $106M DISA AI contract), the 13-point US Critical Minerals Action Plan, Future of Freight research, and FutureScape&trade; &mdash; but <b>no unified go-to-market and no single PE leadership owner</b>.",
+        "Found the <b>40-year offshoring model is fundamentally reversing</b>: $3T+ reshoring investment since Jan 2025; <b>69% of manufacturers</b> have begun reshoring; <b>25% of global trade expected to relocate by 2026</b>; CHIPS, IRA, and OBBBA driving credit-capture demand &mdash; yet only <b>2% of CEOs have fully completed reshoring plans</b>, leaving a wide-open advisory window.",
+        "Identified <b>two confirmed gaps</b>: (1) no unified PE go-to-market or cross-practice narrative &mdash; strong work but siloed, with no leader connecting it for clients; (2) <b>no PE investment thesis</b> &mdash; strong on the operator side, absent on the investor/acquirer side, where <b>BCG and Bain currently lead</b>."
+      ],
+      materials:[
+        {label:"Physical Economy SGM Discovery Assessment", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/StrategicGrowthMarkets-06.SensingandDiscovery/Shared%20Documents/06%20-%20Physical%20Economy/Discovery%20Research/Physical%20Economy%20Discovery%20Assesment.pptx?d=w99045cb263b047719968007a3c01f435&csf=1&web=1&e=Umxe1N", access:"request"},
+        {label:"What Is Deloitte Doing Across the Physical Economy", url:"https://amedeloitte.sharepoint.com/:p:/r/sites/StrategicGrowthMarkets-06.SensingandDiscovery/Shared%20Documents/06%20-%20Physical%20Economy/Discovery%20Research/Deloitte%27s%20Physical%20Economy%20Work.pptx?d=w4e1336057f6c4d48a7948811fd11baf8&csf=1&web=1&e=2yrejc", access:"request"}
+      ]
+    },
+    actions:{
+      intro:"We are bringing together leaders across <b>SGMs (Infrastructure, Trade &amp; Tariffs, AI), Supply Chain &amp; Network Operations, GPS, Tax, M&amp;A, Energy, and OIB Modernization</b> to pressure-test the hypothesis and identify the largest cross-MDM coordination opportunities. <b>Five coordination-based plays are emerging &mdash; each designed to connect what already exists rather than build new:</b>",
+      bullets:[
+        "<b>Unify the PE narrative and go-to-market</b> &mdash; Connect Deloitte&rsquo;s existing footprint (4 Smart Factory hubs, CentralSight&trade;, Critical Minerals work, Future of Freight, ElectrifiedGrid&trade;) under a single cross-MDM leadership owner. Consulting leads narrative; A&A and Tax frame audit and incentive POVs; M&A frames industrial deal flow.",
+        "<b>Build the buy-side PE investment thesis</b> &mdash; Close the BCG/Bain competitive gap by developing investor/acquirer advisory for industrial consolidation, defense supply chain due diligence, and critical minerals M&A. M&A structures deals; Consulting builds the thesis; Tax optimizes holding structures.",
+        "<b>Integrate Tax across the PE stack</b> &mdash; Wire tariff structuring, IRA/CHIPS/OBBBA credit capture, FEOC compliance, and transfer pricing for reshored operations into supply chain advisory (today siloed per Tax conversations). Tax leads; Consulting embeds in client engagements; A&A surfaces compliance risk.",
+        "<b>Activate Trade &amp; Tariffs asset build within PE</b> &mdash; Scope three assets the Trade &amp; Tariffs SGM has identified: supplier data collection for bill-of-materials/tariff estimation; scenario planning knowledge graph across R&D, materials, manufacturing, movement, pricing; executive decision-support synthesis layer. T&amp;T SGM leads build; Consulting commercializes; Tax informs.",
+        "<b>Capture infrastructure intersections</b> &mdash; Smart ports, free trade zones, greenfield manufacturing site-location strategy, and OT cybersecurity &amp; AI assurance audits at critical infrastructure (ports, power, water). Infrastructure SGM partners with Consulting, A&A (cyber and AI assurance audits), and Tax (FTZ structuring and site incentives)."
+      ],
+      implications:"<b>For Deloitte:</b> Five coordination-based plays span SGMs (Infrastructure, Trade &amp; Tariffs, AI), Supply Chain &amp; Defense, Energy, Tax, and M&A &mdash; with the unified go-to-market and the buy-side investment thesis as the immediate value lanes. The hypothesis is being pressure-tested through ongoing cross-MDM stakeholder conversations."
+    },
+    nextSteps:{
+      items:[
+        {text:"Complete cross-MDM stakeholder conversations across SCNO, OIB Modernization, GPS Planning &amp; Logistics, Fleet COE, Warehousing, Tax (Indirect/Policy), and M&A Transportation", meta:"In progress"},
+        {text:"Develop unified PE narrative and identify single cross-firm leadership owner", meta:"To follow"},
+        {text:"Scope coordination-based investments and prioritize the five emerging plays", meta:"To follow"},
+        {text:"Bring forward recommendation: traditional SGM vs. coordination-model structure", meta:"TBD"}
+      ],
+      opportunity:"The Physical Economy may not need a traditional SGM &mdash; targeted, coordination-based investments could enhance and connect what already exists, with <b>$5&ndash;10B+ Deloitte TAM</b> unlocked by unifying go-to-market across Consulting, Tax, A&A, and M&A."
+    }
+  }
+];
+ 
+const STATUS_META = {
+  await:{label:"Awaiting Prioritization", short:"Awaiting Prioritization", cls:"st-await", dot:"await"},
+  prog: {label:"In Progress",              short:"In Progress", cls:"st-prog",  dot:"prog"},
+  done: {label:"Completed",                short:"Completed",   cls:"st-done",  dot:"done"},
+  hold: {label:"On Hold / Deferred",       short:"On Hold",     cls:"st-hold",  dot:"hold"}
+};
+const STATUS_ORDER = ["await","prog","done","hold"];
+ 
+let openDomain = null;
+let statusFilter = null;
+let comments = {};
+let view = "disc";
+ 
+async function sGet(key){
+  if(!window.storage) return null;
+  try{const r=await window.storage.get(key,true); if(r&&r.value) return r.value;}catch(e){}
+  try{const r=await window.storage.get(key,false); if(r&&r.value) return r.value;}catch(e){}
+  return null;
+}
+async function sSet(key,value){
+  if(!window.storage) return;
+  try{await window.storage.set(key,value,true); return;}catch(e){}
+  try{await window.storage.set(key,value,false); return;}catch(e){}
+}
+async function loadComments(){
+  const v = await sGet('sgm-disc-comments');
+  if(v){ try{ comments = JSON.parse(v); }catch(e){} }
+}
+async function saveComments(){
+  await sSet('sgm-disc-comments', JSON.stringify(comments));
+}
+ 
+function setView(v){
+  view = v;
+  document.getElementById('vs-disc').classList.toggle('on', v==='disc');
+  document.getElementById('vs-shape').classList.toggle('on', v==='shape');
+  document.getElementById('disc-view').style.display = v==='disc' ? '' : 'none';
+  document.getElementById('shape-view').style.display = v==='shape' ? '' : 'none';
+}
+ 
+function setStatusFilter(s){
+  statusFilter = (statusFilter === s) ? null : s;
+  openDomain = null;
+  render();
+}
+function toggleDomain(id){
+  openDomain = (openDomain === id) ? null : id;
+  render();
+}
+function selectFromQtab(id){
+  openDomain = id;
+  render();
+  setTimeout(()=>{
+    const card = document.querySelector(`[data-domain="${id}"]`);
+    if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
+  }, 60);
+}
+function clearOpen(){
+  openDomain = null;
+  render();
+}
+ 
+function postComment(domainId){
+  const nameEl = document.getElementById('fb-name-'+domainId);
+  const textEl = document.getElementById('fb-text-'+domainId);
+  if(!nameEl || !textEl) return;
+  const name = nameEl.value.trim();
+  const text = textEl.value.trim();
+  if(!name || !text){ alert('Please enter both your name and a comment.'); return; }
+  if(!comments[domainId]) comments[domainId] = [];
+  comments[domainId].unshift({name, text, timestamp: Date.now()});
+  saveComments();
+  nameEl.value = ''; textEl.value = '';
+  render();
+}
+function deleteComment(domainId, idx){
+  if(!comments[domainId]) return;
+  comments[domainId].splice(idx, 1);
+  if(comments[domainId].length === 0) delete comments[domainId];
+  saveComments();
+  render();
+}
+function hasComment(id){ return comments[id] && comments[id].length > 0; }
+function formatTime(ts){
+  if(!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' · ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
+function initials(name){
+  return name.split(' ').filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase();
+}
+ 
+function bizPill(b){
+  const cls = b === "A&A" ? "biz-aa" : b === "Tax" ? "biz-tax" : "biz-con";
+  return `<span class="biz-pill ${cls}">${b}</span>`;
+}
+function statusPill(s){
+  const m = STATUS_META[s];
+  return `<span class="dr-status ${m.cls}"><span class="d"></span>${m.label}</span>`;
+}
+ 
+function renderInsights(d){
+  const i = d.insights;
+  const body = i.bullets ? `
+    <div class="insight-bullets">
+      ${i.bullets.map(b=>`<div class="insight-bullet"><span class="ib-mark">&rarr;</span><span>${b}</span></div>`).join('')}
+    </div>`
+  : `
+    <dl class="insight-grid">
+      <dt>Definition</dt><dd>${i.definition}</dd>
+      <dt>Why Now</dt><dd>${i.whyNow}</dd>
+      <dt>Market</dt><dd>${i.market}</dd>
+      <dt>Disruptors</dt><dd>${i.disruptors}</dd>
+      <dt>Relevance</dt><dd>${i.relevance}</dd>
+    </dl>`;
+  return `<div class="section">
+    <div class="sec-hdr"><div class="sec-num">1</div><div class="sec-title">Research &amp; Insights</div></div>
+    <div class="insight-takeaway">${i.takeaway}</div>
+    ${body}
+    ${i.materials && i.materials.length ? `
+      <div class="materials">
+        <div class="materials-lbl">Supporting Materials</div>
+        ${i.materials.map(m=>`
+          <a class="material-link ${m.access==='request'?'req-access':''}" href="${m.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
+            <span class="ml-icon">&#9656;</span>${m.label}
+          </a>`).join('')}
+      </div>` : ''}
+  </div>`;
+}
+ 
+function renderActions(d){
+  const a = d.actions;
+  return `<div class="section">
+    <div class="sec-hdr"><div class="sec-num">2</div><div class="sec-title">Opportunities Identified</div><div class="sec-subtitle">+ who was brought on and how we got there</div></div>
+    ${a.intro ? `<div class="action-intro">${a.intro}</div>` : ''}
+    <div class="action-list">
+      ${a.bullets.map(b=>`<div class="action-item"><span class="ai-marker">&rarr;</span><span>${b}</span></div>`).join('')}
+    </div>
+    ${a.poc ? `<div class="action-poc"><b>POC for Post-Discovery Efforts:</b> ${a.pocEmail ? `<a href="mailto:${a.pocEmail}" onclick="event.stopPropagation()">${a.poc}</a>` : a.poc}</div>` : ''}
+  </div>`;
+}
+ 
+function renderNextSteps(d){
+  const ns = d.nextSteps;
+  return `<div class="section">
+    <div class="sec-hdr"><div class="sec-num">3</div><div class="sec-title">Proposed Next Steps</div></div>
+    <div class="nextstep-list">
+      ${ns.items.map(it=>`<div class="nextstep-item">
+        <span class="ns-bullet ${it.status==='done'?'done':''}">&#9679;</span>
+        <div class="ns-text">${it.text}${it.meta?`<div class="ns-meta">${it.meta}</div>`:''}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+ 
+function renderFeedback(d){
+  const threads = comments[d.id] || [];
+  const threadHtml = threads.length === 0
+    ? `<div class="fb-empty">No comments yet &mdash; be the first to share your perspective.</div>`
+    : threads.map((c,i)=>`
+        <div class="fb-card">
+          <div class="fb-avatar">${initials(c.name)}</div>
+          <div class="fb-body">
+            <div class="fb-meta">
+              <span class="fb-author">${c.name}</span>
+              <span class="fb-time">${formatTime(c.timestamp)}</span>
+              <span class="fb-del" onclick="event.stopPropagation();deleteComment('${d.id}',${i})">remove</span>
+            </div>
+            <div class="fb-text-body">${c.text}</div>
+          </div>
+        </div>`).join('');
+ 
+  return `<div class="section section-feedback">
+    <div class="sec-hdr"><div class="sec-num">4</div><div class="sec-title">Questions, Ideas, Feedback</div></div>
+    <div class="fb-prompt">Do you have recommendations for how to improve our thinking, or questions for our team? Post your comment below and our team will get back to you.</div>
+    <div class="fb-input-row" onclick="event.stopPropagation()">
+      <input class="fb-name" id="fb-name-${d.id}" placeholder="Your name"/>
+      <textarea class="fb-text" id="fb-text-${d.id}" placeholder="Share your perspective…" rows="2"></textarea>
+      <button class="fb-post" onclick="event.stopPropagation();postComment('${d.id}')">Post</button>
+    </div>
+    <div class="fb-thread">${threadHtml}</div>
+  </div>`;
+}
+ 
+function renderDomainCard(d){
+  const isOpen = openDomain === d.id;
+  return `<div class="domain ${isOpen?'open':''}" data-domain="${d.id}">
+    <div class="domain-row" onclick="toggleDomain('${d.id}')">
+      <div class="dr-name">${d.name}<span class="cmt-dot ${hasComment(d.id)?'has':''}"></span></div>
+      <div>${statusPill(d.status)}</div>
+      <div class="dr-summary">${d.summary}</div>
+      <div class="dr-chev">&#9662;</div>
+    </div>
+    <div class="panel">
+      <div class="panel-grid">
+        ${renderInsights(d)}
+        ${renderActions(d)}
+        ${renderNextSteps(d)}
+        ${renderFeedback(d)}
+        <div class="section-arrow sa-1" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 9 9" fill="none"><path d="M1.5 1L6 4.5L1.5 8" stroke="#5A86BD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="section-arrow sa-2" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 9 9" fill="none"><path d="M1.5 1L6 4.5L1.5 8" stroke="#5A86BD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+    </div>
+  </div>`;
+}
+ 
+function getStatusColor(s){
+  return {await:'var(--st-await)',prog:'var(--st-prog)',done:'var(--st-done)',hold:'var(--st-hold)'}[s];
+}
+ 
+function render(){
+  // Counts
+  const counts = {await:0, prog:0, done:0, hold:0};
+  DOMAINS.forEach(d => counts[d.status]++);
+ 
+  document.getElementById('counts').innerHTML = STATUS_ORDER.map(s=>{
+    const m = STATUS_META[s];
+    const active = statusFilter === s;
+    return `<div class="count-cell ${active?'active':''}" onclick="setStatusFilter('${s}')">
+      <div class="ct-num">${counts[s]}</div>
+      <div class="ct-lbl"><span class="ct-dot ${m.dot}"></span>${m.label}</div>
+    </div>`;
+  }).join('')
+  + `<div class="flow-arrow fa-1" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 9 9" fill="none"><path d="M1.5 1L6 4.5L1.5 8" stroke="#5A86BD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`
+  + `<div class="flow-arrow fa-2" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 9 9" fill="none"><path d="M1.5 1L6 4.5L1.5 8" stroke="#5A86BD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
+ 
+  // Quick-tabs (one-click domain access)
+  const visibleDomains = statusFilter ? DOMAINS.filter(d=>d.status===statusFilter) : DOMAINS;
+  let qtabsHtml = `<button class="qtab ${!openDomain?'on':''}" onclick="clearOpen()">All <span class="qt-status">${visibleDomains.length}</span></button>`;
+  qtabsHtml += visibleDomains.map(d=>{
+    const m = STATUS_META[d.status];
+    const isActive = openDomain === d.id;
+    return `<button class="qtab ${isActive?'on':''}" onclick="selectFromQtab('${d.id}')">${d.name} <span class="qt-status">${m.short}</span></button>`;
+  }).join('');
+  document.getElementById('qtabs').innerHTML = qtabsHtml;
+ 
+  // Grouped domain list
+  const list = document.getElementById('domain-list');
+  let html = '';
+  STATUS_ORDER.forEach(s=>{
+    const items = visibleDomains.filter(d=>d.status===s);
+    if(items.length === 0) return;
+    const m = STATUS_META[s];
+    const thirdCol = s === 'done' ? 'Key Outcome' : 'Hypothesis';
+    html += `<div class="group-hdr">
+      <span class="gh-dot" style="background:${getStatusColor(s)};"></span>
+      <span class="gh-label">${m.label}</span>
+      <span class="gh-count">${items.length}</span>
+      <span class="gh-line"></span>
+    </div>`;
+    html += `<div class="col-hdr">
+      <div>Domain</div>
+      <div>Status</div>
+      <div>${thirdCol}</div>
+      <div></div>
+    </div>`;
+    html += items.map(renderDomainCard).join('');
+  });
+  list.innerHTML = html || '<div style="padding:36px;text-align:center;color:var(--ink-3);font-size:12px;">No domains in this status.</div>';
+}
+ 
+async function init(){
+  await loadComments();
+  render();
+}
+init();
+</script>
+</body>
+</html>
